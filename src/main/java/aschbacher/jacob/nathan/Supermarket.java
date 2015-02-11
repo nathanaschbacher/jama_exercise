@@ -1,67 +1,82 @@
 package aschbacher.jacob.nathan;
 
+import java.util.HashMap;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.Props;
-import akka.actor.UntypedActor;
-import akka.event.Logging;
-import akka.event.LoggingAdapter;
-import akka.actor.SupervisorStrategy;
-import static akka.actor.SupervisorStrategy.resume;
-import static akka.actor.SupervisorStrategy.restart;
-import static akka.actor.SupervisorStrategy.stop;
-import static akka.actor.SupervisorStrategy.escalate;
-import akka.actor.SupervisorStrategy.Directive;
-import akka.actor.OneForOneStrategy;
-import akka.actor.Props;
-import akka.actor.Terminated;
-import akka.actor.UntypedActor;
-import scala.collection.immutable.Seq;
-import scala.concurrent.Await;
-import static akka.pattern.Patterns.ask;
-import scala.concurrent.duration.Duration;
-import akka.testkit.AkkaSpec;
-import akka.testkit.TestProbe;
-
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 public class Supermarket {
-  private ActorSystem system;
-  private ActorRef clerk;
-
   public static void main(String[] args) {
-    Supermarket market = new Supermarket();
-    System.out.println("Opened a new Supermarket!");
-    //System.out.println("Enter checkout item list:");
-    //BufferedReader r = new BufferedReader(new InputStreamReader(System.in));
+    HashMap<String,Product> products = new HashMap<String,Product>();
+    products.put("A",new Product("A", 20));
+    products.put("B",new Product("B", 50));
+    products.put("C",new Product("C", 30));
 
-    //try {
-      //String items = r.readLine().toUpperCase();
-      String items = "ABBACBBAB";
-      market.checkout(items);
-      //System.out.format("Total is: %d", market.checkout(items));
-    //} catch (IOException ioe) {
-      //System.out.println(ioe.toString());
-      //System.exit(1);
-    //}
+    HashMap<String,DiscountRule> discounts = new HashMap<String,DiscountRule>();
+    discounts.put("B", new MForNDiscount(5,3));
+
+    Supermarket market = new Supermarket(products, discounts);
+
+    System.out.println("Opened a new Supermarket!");
+    System.out.println("Enter checkout item list:");
+    BufferedReader r = new BufferedReader(new InputStreamReader(System.in));
+
+    try {
+      String items = r.readLine().toUpperCase();
+      System.out.format("Total is: %d%n", market.checkout(items));
+    } catch (IOException ioe) {
+      System.out.println(ioe.toString());
+      System.exit(1);
+    }
   }
 
-  public Supermarket() {
-    system = ActorSystem.create("Supermarket");
-    clerk = system.actorOf(Props.create(Clerk.class), "clerk");
+  private HashMap<String,Product> products;
+  private HashMap<String,DiscountRule> discounts;
+
+  public Supermarket(HashMap<String,Product> products, HashMap<String,DiscountRule> discounts) {
+    this.products = products;
+    this.discounts = discounts;
   }
 
   public int checkout(String list) {
-    String[] items = list.split("");
-    for(String item: items) {
-      System.out.println("Telling Clerk to Scan a " + item);
-      clerk.tell(item, null);
-    }
+    HashMap<String,Integer> bag = bagItems(list.split(""));
+    return getTotal(bag, products, discounts);
+  }
 
-    Timeout timeout = new Timeout(Duration.create(10, SECONDS));
-    Future<Object> future = Patterns.ask(clerk, Clerk.Msg.CHECKOUT, timeout);
-    Response res = (Response ) Await.result(future, timeout.duration());
+  private HashMap<String,Integer> bagItems(String[] items) {
+    HashMap<String,Integer> bag = new HashMap<String,Integer>();
+
+    for(String item: items) {
+      if(bag.containsKey(item)) {
+        bag.put(item, bag.get(item)+1);
+      }
+      else {
+        bag.put(item, 1);
+      }
+    }
+    return bag;
+  }
+
+  private int getTotal(HashMap<String,Integer> bag, 
+                       HashMap<String,Product> products, 
+                       HashMap<String,DiscountRule> discounts) {
+    int total = 0;
+    
+    for(HashMap.Entry<String,Integer> item: bag.entrySet()) {
+      if(products.containsKey(item.getKey())) {
+        Product product = products.get(item.getKey());
+
+        if(discounts.containsKey(item.getKey())) {
+          DiscountRule discount = discounts.get(item.getKey());
+          total += discount.apply(item.getValue(), product.getPrice());
+        }
+        else {
+          total += product.getPrice() * item.getValue();
+        }
+      }
+    }
+    return total;
   }
 }

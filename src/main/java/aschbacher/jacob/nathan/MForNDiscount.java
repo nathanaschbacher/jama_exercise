@@ -11,7 +11,7 @@ public class MForNDiscount implements DiscountRule {
 
   public int apply(int quantity, int unitPrice) {
     int groupsOfM = quantity / M;  
-    int remainderOfM = quantity % M;
+    int remainderOfM = quantity - (groupsOfM * M);
 
     return (unitPrice * groupsOfM * N) + (unitPrice * remainderOfM);
   }
